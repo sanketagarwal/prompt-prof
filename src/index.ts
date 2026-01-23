@@ -21,3 +21,6 @@ export * from './core/constants';
 export * from './types/cursor-data';
 export * from './parsers/cursor-parser';
 export * from './analyzers/cursor-quality';
+
+// Classifier exports
+export * from './analyzers/prompt-classifier';

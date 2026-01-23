@@ -53,6 +53,14 @@ import {
   detectCursorRetries,
 } from '../src/analyzers/cursor-quality';
 import { CURSOR_DATA_DIR } from '../src/types/cursor-data';
+import {
+  classifyPrompt,
+  classifyPromptWithResponse,
+  calculatePromptStats,
+  ClassifiedPrompt,
+  PromptStats,
+  getTypeLabel,
+} from '../src/analyzers/prompt-classifier';
 
 import * as fs from 'fs';
 
@@ -709,6 +717,224 @@ cursorCmd
 
     console.log();
   });
+
+// ==================== GLOBAL REPORT COMMAND ====================
+
+program
+  .command('report')
+  .description('Comprehensive report for all AI assistants')
+  .option('-d, --days <number>', 'Days to look back', '7')
+  .action(async (options) => {
+    try {
+      const days = parseInt(options.days);
+      const endDate = dayjs().endOf('day').toDate();
+      const startDate = dayjs().subtract(days, 'day').startOf('day').toDate();
+
+      printHeader(`Prompt Effectiveness Report (Past ${days} days)`);
+      console.log();
+
+      let hasData = false;
+
+      // ===== CLAUDE CODE ANALYSIS =====
+      if (fs.existsSync(CLAUDE_DATA_DIR)) {
+        const sessions = await parseSessions(startDate, endDate);
+
+        if (sessions.length > 0) {
+          hasData = true;
+          const claudePrompts: ClassifiedPrompt[] = [];
+
+          for (const session of sessions) {
+            const analyzed = analyzeSessionPrompts(session);
+            const messages = session.messages;
+
+            for (const p of analyzed) {
+              // Find response for better classification
+              const msgIndex = messages.findIndex(m => m.uuid === p.uuid);
+              const response = messages.slice(msgIndex + 1).find(m => m.role === 'assistant') || null;
+
+              const type = classifyPromptWithResponse(p.prompt, response);
+              claudePrompts.push({
+                prompt: p.prompt,
+                type,
+                score: p.score.overall,
+              });
+            }
+          }
+
+          // Filter out empty prompts
+          const validPrompts = claudePrompts.filter(p => p.prompt.trim().length > 0);
+          const stats = calculatePromptStats(validPrompts);
+
+          printSection('CLAUDE CODE', '🤖');
+          console.log();
+
+          // Summary stats
+          const summaryTable = new Table({
+            style: { head: [], border: [] },
+          });
+
+          summaryTable.push(
+            [chalk.gray('Total Prompts'), chalk.white(stats.total.toString())],
+            [chalk.gray('Average Score'), getScoreColor(stats.avgScore)(`${stats.avgScore}/100`)],
+            [chalk.gray('Sessions'), chalk.white(sessions.length.toString())],
+          );
+
+          console.log(summaryTable.toString());
+          console.log();
+
+          // Prompt type breakdown
+          console.log(chalk.cyan('Prompt Types:'));
+          const typeTable = new Table({
+            head: [chalk.cyan('Type'), chalk.cyan('Count'), chalk.cyan('%')],
+            style: { head: [], border: [] },
+          });
+
+          const allTypes: Array<[string, number]> = [
+            ['Code Generation', stats.codeGeneration],
+            ['Questions', stats.questions],
+            ['File Operations', stats.fileOperations],
+            ['Commands/Actions', stats.commands],
+            ['Clarifications', stats.clarifications],
+            ['Other', stats.other],
+          ];
+
+          for (const [label, count] of allTypes) {
+            if (count > 0) {
+              const pct = stats.total > 0 ? ((count / stats.total) * 100).toFixed(1) : '0';
+              typeTable.push([label, count.toString(), `${pct}%`]);
+            }
+          }
+
+          console.log(typeTable.toString());
+          console.log();
+
+          // Score distribution
+          console.log(chalk.cyan('Score Distribution:'));
+          const distTable = new Table({
+            head: [chalk.cyan('Rating'), chalk.cyan('Count'), chalk.cyan('%')],
+            style: { head: [], border: [] },
+          });
+
+          distTable.push(
+            [chalk.green('Excellent (90+)'), stats.scoreDistribution.excellent.toString(), `${((stats.scoreDistribution.excellent / stats.total) * 100).toFixed(1)}%`],
+            [chalk.blue('Good (70-89)'), stats.scoreDistribution.good.toString(), `${((stats.scoreDistribution.good / stats.total) * 100).toFixed(1)}%`],
+            [chalk.yellow('Fair (50-69)'), stats.scoreDistribution.fair.toString(), `${((stats.scoreDistribution.fair / stats.total) * 100).toFixed(1)}%`],
+            [chalk.red('Poor (<50)'), stats.scoreDistribution.poor.toString(), `${((stats.scoreDistribution.poor / stats.total) * 100).toFixed(1)}%`],
+          );
+
+          console.log(distTable.toString());
+          console.log();
+        }
+      }
+
+      // ===== CURSOR ANALYSIS =====
+      if (fs.existsSync(CURSOR_DATA_DIR)) {
+        const transcripts = parseCursorTranscripts(startDate, endDate);
+
+        if (transcripts.length > 0) {
+          hasData = true;
+          const cursorPrompts: ClassifiedPrompt[] = [];
+
+          for (const transcript of transcripts) {
+            const analyzed = analyzeCursorTranscriptPrompts(transcript);
+            const messages = transcript.messages;
+
+            for (const p of analyzed) {
+              // Find response for better classification
+              const msgIndex = messages.findIndex(m => m.role === 'user' && m.content === p.prompt);
+              const response = messages.slice(msgIndex + 1).find(m => m.role === 'assistant') || null;
+
+              const type = classifyPromptWithResponse(p.prompt, response);
+              cursorPrompts.push({
+                prompt: p.prompt,
+                type,
+                score: p.score.overall,
+              });
+            }
+          }
+
+          // Filter out empty prompts
+          const validPrompts = cursorPrompts.filter(p => p.prompt.trim().length > 0);
+          const stats = calculatePromptStats(validPrompts);
+
+          printSection('CURSOR', '📝');
+          console.log();
+
+          // Summary stats
+          const summaryTable = new Table({
+            style: { head: [], border: [] },
+          });
+
+          summaryTable.push(
+            [chalk.gray('Total Prompts'), chalk.white(stats.total.toString())],
+            [chalk.gray('Average Score'), getScoreColor(stats.avgScore)(`${stats.avgScore}/100`)],
+            [chalk.gray('Transcripts'), chalk.white(transcripts.length.toString())],
+          );
+
+          console.log(summaryTable.toString());
+          console.log();
+
+          // Prompt type breakdown
+          console.log(chalk.cyan('Prompt Types:'));
+          const typeTable = new Table({
+            head: [chalk.cyan('Type'), chalk.cyan('Count'), chalk.cyan('%')],
+            style: { head: [], border: [] },
+          });
+
+          const allTypes: Array<[string, number]> = [
+            ['Code Generation', stats.codeGeneration],
+            ['Questions', stats.questions],
+            ['File Operations', stats.fileOperations],
+            ['Commands/Actions', stats.commands],
+            ['Clarifications', stats.clarifications],
+            ['Other', stats.other],
+          ];
+
+          for (const [label, count] of allTypes) {
+            if (count > 0) {
+              const pct = stats.total > 0 ? ((count / stats.total) * 100).toFixed(1) : '0';
+              typeTable.push([label, count.toString(), `${pct}%`]);
+            }
+          }
+
+          console.log(typeTable.toString());
+          console.log();
+
+          // Score distribution
+          console.log(chalk.cyan('Score Distribution:'));
+          const distTable = new Table({
+            head: [chalk.cyan('Rating'), chalk.cyan('Count'), chalk.cyan('%')],
+            style: { head: [], border: [] },
+          });
+
+          distTable.push(
+            [chalk.green('Excellent (90+)'), stats.scoreDistribution.excellent.toString(), `${((stats.scoreDistribution.excellent / stats.total) * 100).toFixed(1)}%`],
+            [chalk.blue('Good (70-89)'), stats.scoreDistribution.good.toString(), `${((stats.scoreDistribution.good / stats.total) * 100).toFixed(1)}%`],
+            [chalk.yellow('Fair (50-69)'), stats.scoreDistribution.fair.toString(), `${((stats.scoreDistribution.fair / stats.total) * 100).toFixed(1)}%`],
+            [chalk.red('Poor (<50)'), stats.scoreDistribution.poor.toString(), `${((stats.scoreDistribution.poor / stats.total) * 100).toFixed(1)}%`],
+          );
+
+          console.log(distTable.toString());
+          console.log();
+        }
+      }
+
+      if (!hasData) {
+        printNoData(`No data found in the past ${days} days`);
+      }
+    } catch (err) {
+      printError(err instanceof Error ? err.message : 'Unknown error');
+      process.exit(1);
+    }
+  });
+
+// Helper function for score coloring
+function getScoreColor(score: number): (text: string) => string {
+  if (score >= 90) return chalk.green;
+  if (score >= 70) return chalk.blue;
+  if (score >= 50) return chalk.yellow;
+  return chalk.red;
+}
 
 // ==================== GLOBAL STATS COMMAND ====================
 
