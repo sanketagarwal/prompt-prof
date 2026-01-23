@@ -720,9 +720,42 @@ cursorCmd
 
 // ==================== GLOBAL REPORT COMMAND ====================
 
+// Extended interface for combined prompts with source tracking
+interface CombinedPrompt extends ClassifiedPrompt {
+  source: 'Claude Code' | 'Cursor';
+  issues?: string[];
+}
+
+// Suggestion generator for low-scoring prompts
+function getSuggestion(prompt: string, issues: string[]): string {
+  if (issues.length > 0) {
+    return issues[0];
+  }
+
+  const trimmed = prompt.trim().toLowerCase();
+
+  if (trimmed.length < 10) {
+    return 'Add more context and specifics';
+  }
+  if (trimmed.includes('fix it') || trimmed.includes('make it work')) {
+    return 'Be specific: what exactly needs fixing?';
+  }
+  if (trimmed.includes('do the same') || trimmed.includes('same thing')) {
+    return 'Reference the specific action/file explicitly';
+  }
+  if (!trimmed.includes('.') && !trimmed.includes('/') && trimmed.length < 30) {
+    return 'Include file names or paths for clarity';
+  }
+  if (trimmed.startsWith('no') || trimmed.startsWith('not') || trimmed.startsWith('wrong')) {
+    return 'Provide complete requirements instead of corrections';
+  }
+
+  return 'Add more context about the desired outcome';
+}
+
 program
   .command('report')
-  .description('Comprehensive report for all AI assistants')
+  .description('Comprehensive combined report for all AI assistants')
   .option('-d, --days <number>', 'Days to look back', '7')
   .action(async (options) => {
     try {
@@ -733,195 +766,210 @@ program
       printHeader(`Prompt Effectiveness Report (Past ${days} days)`);
       console.log();
 
-      let hasData = false;
+      // Collect ALL prompts from both sources
+      const allPrompts: CombinedPrompt[] = [];
+      let claudeSessions = 0;
+      let cursorTranscripts = 0;
 
-      // ===== CLAUDE CODE ANALYSIS =====
+      // ===== COLLECT CLAUDE CODE PROMPTS =====
       if (fs.existsSync(CLAUDE_DATA_DIR)) {
         const sessions = await parseSessions(startDate, endDate);
+        claudeSessions = sessions.length;
 
-        if (sessions.length > 0) {
-          hasData = true;
-          const claudePrompts: ClassifiedPrompt[] = [];
+        for (const session of sessions) {
+          const analyzed = analyzeSessionPrompts(session);
+          const messages = session.messages;
 
-          for (const session of sessions) {
-            const analyzed = analyzeSessionPrompts(session);
-            const messages = session.messages;
+          for (const p of analyzed) {
+            const msgIndex = messages.findIndex(m => m.uuid === p.uuid);
+            const response = messages.slice(msgIndex + 1).find(m => m.role === 'assistant') || null;
+            const type = classifyPromptWithResponse(p.prompt, response);
 
-            for (const p of analyzed) {
-              // Find response for better classification
-              const msgIndex = messages.findIndex(m => m.uuid === p.uuid);
-              const response = messages.slice(msgIndex + 1).find(m => m.role === 'assistant') || null;
-
-              const type = classifyPromptWithResponse(p.prompt, response);
-              claudePrompts.push({
+            if (p.prompt.trim().length > 0) {
+              allPrompts.push({
                 prompt: p.prompt,
                 type,
                 score: p.score.overall,
+                source: 'Claude Code',
+                issues: p.score.issues,
               });
             }
           }
-
-          // Filter out empty prompts
-          const validPrompts = claudePrompts.filter(p => p.prompt.trim().length > 0);
-          const stats = calculatePromptStats(validPrompts);
-
-          printSection('CLAUDE CODE', '🤖');
-          console.log();
-
-          // Summary stats
-          const summaryTable = new Table({
-            style: { head: [], border: [] },
-          });
-
-          summaryTable.push(
-            [chalk.gray('Total Prompts'), chalk.white(stats.total.toString())],
-            [chalk.gray('Average Score'), getScoreColor(stats.avgScore)(`${stats.avgScore}/100`)],
-            [chalk.gray('Sessions'), chalk.white(sessions.length.toString())],
-          );
-
-          console.log(summaryTable.toString());
-          console.log();
-
-          // Prompt type breakdown
-          console.log(chalk.cyan('Prompt Types:'));
-          const typeTable = new Table({
-            head: [chalk.cyan('Type'), chalk.cyan('Count'), chalk.cyan('%')],
-            style: { head: [], border: [] },
-          });
-
-          const allTypes: Array<[string, number]> = [
-            ['Code Generation', stats.codeGeneration],
-            ['Questions', stats.questions],
-            ['File Operations', stats.fileOperations],
-            ['Commands/Actions', stats.commands],
-            ['Clarifications', stats.clarifications],
-            ['Other', stats.other],
-          ];
-
-          for (const [label, count] of allTypes) {
-            if (count > 0) {
-              const pct = stats.total > 0 ? ((count / stats.total) * 100).toFixed(1) : '0';
-              typeTable.push([label, count.toString(), `${pct}%`]);
-            }
-          }
-
-          console.log(typeTable.toString());
-          console.log();
-
-          // Score distribution
-          console.log(chalk.cyan('Score Distribution:'));
-          const distTable = new Table({
-            head: [chalk.cyan('Rating'), chalk.cyan('Count'), chalk.cyan('%')],
-            style: { head: [], border: [] },
-          });
-
-          distTable.push(
-            [chalk.green('Excellent (90+)'), stats.scoreDistribution.excellent.toString(), `${((stats.scoreDistribution.excellent / stats.total) * 100).toFixed(1)}%`],
-            [chalk.blue('Good (70-89)'), stats.scoreDistribution.good.toString(), `${((stats.scoreDistribution.good / stats.total) * 100).toFixed(1)}%`],
-            [chalk.yellow('Fair (50-69)'), stats.scoreDistribution.fair.toString(), `${((stats.scoreDistribution.fair / stats.total) * 100).toFixed(1)}%`],
-            [chalk.red('Poor (<50)'), stats.scoreDistribution.poor.toString(), `${((stats.scoreDistribution.poor / stats.total) * 100).toFixed(1)}%`],
-          );
-
-          console.log(distTable.toString());
-          console.log();
         }
       }
 
-      // ===== CURSOR ANALYSIS =====
+      // ===== COLLECT CURSOR PROMPTS =====
       if (fs.existsSync(CURSOR_DATA_DIR)) {
         const transcripts = parseCursorTranscripts(startDate, endDate);
+        cursorTranscripts = transcripts.length;
 
-        if (transcripts.length > 0) {
-          hasData = true;
-          const cursorPrompts: ClassifiedPrompt[] = [];
+        for (const transcript of transcripts) {
+          const analyzed = analyzeCursorTranscriptPrompts(transcript);
+          const messages = transcript.messages;
 
-          for (const transcript of transcripts) {
-            const analyzed = analyzeCursorTranscriptPrompts(transcript);
-            const messages = transcript.messages;
+          for (const p of analyzed) {
+            const msgIndex = messages.findIndex(m => m.role === 'user' && m.content === p.prompt);
+            const response = messages.slice(msgIndex + 1).find(m => m.role === 'assistant') || null;
+            const type = classifyPromptWithResponse(p.prompt, response);
 
-            for (const p of analyzed) {
-              // Find response for better classification
-              const msgIndex = messages.findIndex(m => m.role === 'user' && m.content === p.prompt);
-              const response = messages.slice(msgIndex + 1).find(m => m.role === 'assistant') || null;
-
-              const type = classifyPromptWithResponse(p.prompt, response);
-              cursorPrompts.push({
+            if (p.prompt.trim().length > 0) {
+              allPrompts.push({
                 prompt: p.prompt,
                 type,
                 score: p.score.overall,
+                source: 'Cursor',
+                issues: p.score.issues,
               });
             }
           }
-
-          // Filter out empty prompts
-          const validPrompts = cursorPrompts.filter(p => p.prompt.trim().length > 0);
-          const stats = calculatePromptStats(validPrompts);
-
-          printSection('CURSOR', '📝');
-          console.log();
-
-          // Summary stats
-          const summaryTable = new Table({
-            style: { head: [], border: [] },
-          });
-
-          summaryTable.push(
-            [chalk.gray('Total Prompts'), chalk.white(stats.total.toString())],
-            [chalk.gray('Average Score'), getScoreColor(stats.avgScore)(`${stats.avgScore}/100`)],
-            [chalk.gray('Transcripts'), chalk.white(transcripts.length.toString())],
-          );
-
-          console.log(summaryTable.toString());
-          console.log();
-
-          // Prompt type breakdown
-          console.log(chalk.cyan('Prompt Types:'));
-          const typeTable = new Table({
-            head: [chalk.cyan('Type'), chalk.cyan('Count'), chalk.cyan('%')],
-            style: { head: [], border: [] },
-          });
-
-          const allTypes: Array<[string, number]> = [
-            ['Code Generation', stats.codeGeneration],
-            ['Questions', stats.questions],
-            ['File Operations', stats.fileOperations],
-            ['Commands/Actions', stats.commands],
-            ['Clarifications', stats.clarifications],
-            ['Other', stats.other],
-          ];
-
-          for (const [label, count] of allTypes) {
-            if (count > 0) {
-              const pct = stats.total > 0 ? ((count / stats.total) * 100).toFixed(1) : '0';
-              typeTable.push([label, count.toString(), `${pct}%`]);
-            }
-          }
-
-          console.log(typeTable.toString());
-          console.log();
-
-          // Score distribution
-          console.log(chalk.cyan('Score Distribution:'));
-          const distTable = new Table({
-            head: [chalk.cyan('Rating'), chalk.cyan('Count'), chalk.cyan('%')],
-            style: { head: [], border: [] },
-          });
-
-          distTable.push(
-            [chalk.green('Excellent (90+)'), stats.scoreDistribution.excellent.toString(), `${((stats.scoreDistribution.excellent / stats.total) * 100).toFixed(1)}%`],
-            [chalk.blue('Good (70-89)'), stats.scoreDistribution.good.toString(), `${((stats.scoreDistribution.good / stats.total) * 100).toFixed(1)}%`],
-            [chalk.yellow('Fair (50-69)'), stats.scoreDistribution.fair.toString(), `${((stats.scoreDistribution.fair / stats.total) * 100).toFixed(1)}%`],
-            [chalk.red('Poor (<50)'), stats.scoreDistribution.poor.toString(), `${((stats.scoreDistribution.poor / stats.total) * 100).toFixed(1)}%`],
-          );
-
-          console.log(distTable.toString());
-          console.log();
         }
       }
 
-      if (!hasData) {
-        printNoData(`No data found in the past ${days} days`);
+      if (allPrompts.length === 0) {
+        printNoData(`No prompts found in the past ${days} days`);
+        return;
       }
+
+      // Calculate combined statistics
+      const stats = calculatePromptStats(allPrompts);
+
+      // ===== SUMMARY SECTION =====
+      printSection('COMBINED SUMMARY', '📊');
+      console.log();
+
+      const summaryTable = new Table({
+        style: { head: [], border: [] },
+      });
+
+      summaryTable.push(
+        [chalk.gray('Total Prompts'), chalk.white(stats.total.toString())],
+        [chalk.gray('Average Score'), getScoreColor(stats.avgScore)(`${stats.avgScore}/100`)],
+        [chalk.gray('Claude Code Sessions'), chalk.white(claudeSessions.toString())],
+        [chalk.gray('Cursor Transcripts'), chalk.white(cursorTranscripts.toString())],
+      );
+
+      console.log(summaryTable.toString());
+      console.log();
+
+      // ===== PROMPT TYPE BREAKDOWN =====
+      console.log(chalk.cyan('Prompt Types:'));
+      const typeTable = new Table({
+        head: [chalk.cyan('Type'), chalk.cyan('Count'), chalk.cyan('%')],
+        style: { head: [], border: [] },
+      });
+
+      const allTypes: Array<[string, number]> = [
+        ['Code Generation', stats.codeGeneration],
+        ['Questions', stats.questions],
+        ['File Operations', stats.fileOperations],
+        ['Commands/Actions', stats.commands],
+        ['Clarifications', stats.clarifications],
+        ['Other', stats.other],
+      ];
+
+      for (const [label, count] of allTypes) {
+        if (count > 0) {
+          const pct = stats.total > 0 ? ((count / stats.total) * 100).toFixed(1) : '0';
+          typeTable.push([label, count.toString(), `${pct}%`]);
+        }
+      }
+
+      console.log(typeTable.toString());
+      console.log();
+
+      // ===== SCORE DISTRIBUTION =====
+      console.log(chalk.cyan('Score Distribution:'));
+      const distTable = new Table({
+        head: [chalk.cyan('Rating'), chalk.cyan('Count'), chalk.cyan('%')],
+        style: { head: [], border: [] },
+      });
+
+      const totalForPct = stats.total || 1;
+      distTable.push(
+        [chalk.green('Excellent (90+)'), stats.scoreDistribution.excellent.toString(), `${((stats.scoreDistribution.excellent / totalForPct) * 100).toFixed(1)}%`],
+        [chalk.blue('Good (70-89)'), stats.scoreDistribution.good.toString(), `${((stats.scoreDistribution.good / totalForPct) * 100).toFixed(1)}%`],
+        [chalk.yellow('Fair (50-69)'), stats.scoreDistribution.fair.toString(), `${((stats.scoreDistribution.fair / totalForPct) * 100).toFixed(1)}%`],
+        [chalk.red('Poor (<50)'), stats.scoreDistribution.poor.toString(), `${((stats.scoreDistribution.poor / totalForPct) * 100).toFixed(1)}%`],
+      );
+
+      console.log(distTable.toString());
+      console.log();
+
+      // ===== TOP 5 BEST PROMPTS =====
+      const sortedPrompts = [...allPrompts].sort((a, b) => b.score - a.score);
+      const best = sortedPrompts.slice(0, 5);
+
+      printSection('TOP 5 BEST PROMPTS', '🏆');
+      console.log();
+
+      for (let i = 0; i < best.length; i++) {
+        const p = best[i];
+        const truncated = p.prompt.length > 60 ? p.prompt.slice(0, 57) + '...' : p.prompt;
+        const sourceLabel = p.source === 'Claude Code' ? chalk.magenta('[CC]') : chalk.cyan('[Cu]');
+        console.log(
+          chalk.white(`${i + 1}. `) +
+          sourceLabel + ' ' +
+          chalk.green(`"${truncated}"`) +
+          chalk.gray(` (Score: ${p.score})`)
+        );
+      }
+      console.log();
+
+      // ===== TOP 5 WORST PROMPTS WITH SUGGESTIONS =====
+      const worst = sortedPrompts.slice(-5).reverse();
+
+      printSection('TOP 5 WORST PROMPTS (with suggestions)', '⚠️');
+      console.log();
+
+      for (let i = 0; i < worst.length; i++) {
+        const p = worst[i];
+        const truncated = p.prompt.length > 50 ? p.prompt.slice(0, 47) + '...' : p.prompt;
+        const sourceLabel = p.source === 'Claude Code' ? chalk.magenta('[CC]') : chalk.cyan('[Cu]');
+        const suggestion = getSuggestion(p.prompt, p.issues || []);
+        console.log(
+          chalk.white(`${i + 1}. `) +
+          sourceLabel + ' ' +
+          chalk.red(`"${truncated}"`) +
+          chalk.gray(` (Score: ${p.score})`)
+        );
+        console.log(
+          chalk.gray('   → ') + chalk.yellow(suggestion)
+        );
+      }
+      console.log();
+
+      // ===== SOURCE BREAKDOWN =====
+      const claudeCount = allPrompts.filter(p => p.source === 'Claude Code').length;
+      const cursorCount = allPrompts.filter(p => p.source === 'Cursor').length;
+      const claudeAvg = claudeCount > 0
+        ? Math.round(allPrompts.filter(p => p.source === 'Claude Code').reduce((sum, p) => sum + p.score, 0) / claudeCount)
+        : 0;
+      const cursorAvg = cursorCount > 0
+        ? Math.round(allPrompts.filter(p => p.source === 'Cursor').reduce((sum, p) => sum + p.score, 0) / cursorCount)
+        : 0;
+
+      printSection('BY SOURCE', '📈');
+      console.log();
+
+      const sourceTable = new Table({
+        head: [chalk.cyan('Source'), chalk.cyan('Prompts'), chalk.cyan('Avg Score')],
+        style: { head: [], border: [] },
+      });
+
+      if (claudeCount > 0) {
+        sourceTable.push([chalk.magenta('Claude Code'), claudeCount.toString(), getScoreColor(claudeAvg)(`${claudeAvg}/100`)]);
+      }
+      if (cursorCount > 0) {
+        sourceTable.push([chalk.cyan('Cursor'), cursorCount.toString(), getScoreColor(cursorAvg)(`${cursorAvg}/100`)]);
+      }
+
+      console.log(sourceTable.toString());
+      console.log();
+
+      // Legend
+      console.log(chalk.gray('Legend: [CC] = Claude Code, [Cu] = Cursor'));
+      console.log(chalk.gray('For detailed reports: prompt-prof claude report daily | prompt-prof cursor report summary'));
+      console.log();
     } catch (err) {
       printError(err instanceof Error ? err.message : 'Unknown error');
       process.exit(1);

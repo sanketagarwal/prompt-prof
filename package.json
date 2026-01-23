@@ -1,6 +1,6 @@
 {
   "name": "prompt-prof",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Analyze prompt effectiveness for AI coding assistants (Claude Code & Cursor). Track quality scores, costs, patterns, and get actionable insights to improve your prompting.",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
