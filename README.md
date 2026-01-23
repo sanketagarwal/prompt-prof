@@ -1,8 +1,24 @@
 # prompt-prof
 
-Analyze prompt effectiveness for AI coding assistants. Track quality scores, costs, patterns, and get actionable insights to improve your prompting.
+**Analyze your AI coding assistant prompts to become a better prompter.**
 
-**Supports:** Claude Code & Cursor
+Track prompt quality, identify patterns, and get actionable insights to improve your effectiveness with Claude Code and Cursor.
+
+## Why prompt-prof?
+
+AI coding assistants are powerful, but their effectiveness depends heavily on how you prompt them. This tool helps you:
+
+- **Understand your prompting patterns** - See what types of prompts you use most
+- **Identify inefficiencies** - Find vague prompts, excessive retries, and clarifications
+- **Track quality over time** - Monitor your average prompt scores
+- **Learn from your best prompts** - See what works and replicate it
+
+## Supported AI Assistants
+
+| Assistant | Data Location | What's Analyzed |
+|-----------|---------------|-----------------|
+| **Claude Code** | `~/.claude/` | Sessions, costs, tokens, tool usage |
+| **Cursor** | `~/.cursor/` | Agent transcripts, code generations |
 
 ## Installation
 
@@ -13,27 +29,94 @@ npm install -g prompt-prof
 ## Quick Start
 
 ```bash
-# View stats for all AI assistants
-prompt-prof stats
+# Comprehensive report for all AI assistants
+prompt-prof report
 
-# Claude Code analysis
-prompt-prof claude report daily
-prompt-prof claude patterns best
+# Today only
+prompt-prof report -d 1
 
-# Cursor analysis
-prompt-prof cursor report summary
-prompt-prof cursor patterns worst
+# Past 30 days
+prompt-prof report -d 30
 ```
 
-## Features
+## Example Output
 
-- **Quality Scoring** - Rate prompts on clarity, context, efficiency, and outcome (0-100)
-- **Pattern Detection** - Identify retries, vague commands, and improvement opportunities
-- **Cost Analysis** - Track spending by model, detect wasted spend (Claude Code)
-- **Tool Usage Stats** - See which tools are used most and their success rates
-- **Best/Worst Prompts** - Learn from your most and least effective prompts
+```
+╔════════════════════════════════════════════════════╗
+║    Prompt Effectiveness Report (Past 7 days)     ║
+╚════════════════════════════════════════════════════╝
 
-## Commands
+🤖 CLAUDE CODE
+
+┌───────────────┬────────┐
+│ Total Prompts │ 76     │
+│ Average Score │ 59/100 │
+│ Sessions      │ 10     │
+└───────────────┴────────┘
+
+Prompt Types:
+┌──────────────────┬───────┬───────┐
+│ Type             │ Count │ %     │
+├──────────────────┼───────┼───────┤
+│ Code Generation  │ 4     │ 5.3%  │
+│ Questions        │ 21    │ 27.6% │
+│ Commands/Actions │ 16    │ 21.1% │
+│ Clarifications   │ 5     │ 6.6%  │
+│ Other            │ 27    │ 35.5% │
+└──────────────────┴───────┴───────┘
+
+Score Distribution:
+┌─────────────────┬───────┬───────┐
+│ Rating          │ Count │ %     │
+├─────────────────┼───────┼───────┤
+│ Excellent (90+) │ 0     │ 0.0%  │
+│ Good (70-89)    │ 1     │ 1.3%  │
+│ Fair (50-69)    │ 75    │ 98.7% │
+│ Poor (<50)      │ 0     │ 0.0%  │
+└─────────────────┴───────┴───────┘
+
+📝 CURSOR
+
+┌───────────────┬────────┐
+│ Total Prompts │ 43     │
+│ Average Score │ 61/100 │
+│ Transcripts   │ 3      │
+└───────────────┴────────┘
+...
+```
+
+## What the Report Shows
+
+### Prompt Types
+
+| Type | Examples |
+|------|----------|
+| **Code Generation** | "Create a function...", "Implement...", "Build a component..." |
+| **Questions** | "What is...", "How do I...", "Why does...", "Can you explain..." |
+| **File Operations** | "Read file...", "Find files matching...", "Search for..." |
+| **Commands/Actions** | "Run tests", "Fix the bug", "Update the config", "Deploy" |
+| **Clarifications** | "No, I meant...", "Actually...", "Not that, the other one" |
+| **Other** | Everything else |
+
+### Score Ratings
+
+| Rating | Score | What it Means |
+|--------|-------|---------------|
+| **Excellent** | 90-100 | Specific, clear context, actionable |
+| **Good** | 70-89 | Solid prompts with minor improvements possible |
+| **Fair** | 50-69 | Works but could be more specific |
+| **Poor** | 0-49 | Vague, missing context, or retries |
+
+## All Commands
+
+### Global (Both Claude Code & Cursor)
+
+```bash
+prompt-prof report              # Comprehensive report (default: 7 days)
+prompt-prof report -d 1         # Today only
+prompt-prof report -d 30        # Past 30 days
+prompt-prof stats               # Quick stats overview
+```
 
 ### Claude Code
 
@@ -43,8 +126,8 @@ prompt-prof claude report daily              # Today's summary
 prompt-prof claude report daily -d 2026-01-22  # Specific date
 prompt-prof claude report weekly             # Past 7 days
 
-# Prompt Patterns
-prompt-prof claude patterns best             # Top 10 prompts by quality
+# Find Best & Worst Prompts
+prompt-prof claude patterns best             # Top 10 prompts
 prompt-prof claude patterns best -n 20       # Top 20 prompts
 prompt-prof claude patterns worst            # Bottom 10 prompts
 prompt-prof claude patterns worst -d 30      # Look back 30 days
@@ -63,10 +146,10 @@ prompt-prof claude analyze <sessionId>       # Analyze specific session
 
 ```bash
 # Reports
-prompt-prof cursor report summary            # Usage summary (past 7 days)
+prompt-prof cursor report summary            # Usage summary (default: 7 days)
 prompt-prof cursor report summary -d 30      # Past 30 days
 
-# Prompt Patterns
+# Find Best & Worst Prompts
 prompt-prof cursor patterns best             # Top 10 prompts
 prompt-prof cursor patterns worst            # Bottom 10 prompts
 
@@ -78,86 +161,70 @@ prompt-prof cursor analyze <transcriptId>    # Analyze specific transcript
 prompt-prof cursor stats                     # Code generations, models, file types
 ```
 
-### Global
+## Quality Scoring System
 
-```bash
-prompt-prof stats                            # Combined stats for all sources
-prompt-prof --help                           # Help
-```
-
-## Quality Scoring
-
-Prompts are scored on 4 dimensions (0-100 each, weighted equally):
+Each prompt is scored 0-100 based on 4 dimensions:
 
 ### Clarity (25%)
-- **+10** File/function references
-- **+8** Clear action verbs (create, fix, update)
-- **+5** Line numbers, error messages, code snippets
-- **-15** Vague commands ("fix it", "make it work")
-- **-10** Short prompts without context
+| Factor | Points |
+|--------|--------|
+| File/function references | +10 |
+| Clear action verbs (create, fix, update) | +8 |
+| Line numbers, error messages, code snippets | +5 |
+| Vague commands ("fix it", "make it work") | -15 |
+| Short prompts without context | -10 |
 
 ### Context (25%)
-- **+10** Proper follow-up references
-- **+8** References recent tool output
-- **-15** Cold start with unclear reference
-- **-10** Assumes missing context
+| Factor | Points |
+|--------|--------|
+| Proper follow-up references | +10 |
+| References recent tool output | +8 |
+| Cold start with unclear reference | -15 |
+| Assumes missing context | -10 |
 
 ### Efficiency (25%)
-- **-20** Retry of previous prompt (similarity > 60%)
-- **-10** Excessive verbosity (500+ words)
+| Factor | Points |
+|--------|--------|
+| Retry of previous prompt (>60% similar) | -20 |
+| Excessive verbosity (500+ words) | -10 |
 
 ### Outcome (25%)
-- Based on tool success rate
-- **-15** Required clarification follow-up
-- **-20** Conversation loop detected
-
-## Example Output
-
-```
-╔════════════════════════════════════════════════════╗
-║         Daily Report: January 22, 2026             ║
-╠════════════════════════════════════════════════════╣
-║ Sessions: 4    Prompts: 47    Cost: $2.47          ║
-╠════════════════════════════════════════════════════╣
-
-📊 METRICS
-┌──────────────────┬─────────┬─────────┐
-│ Metric           │ Value   │ Status  │
-├──────────────────┼─────────┼─────────┤
-│ Avg Quality      │ 72/100  │ ↑ Good  │
-│ Cache Hit Rate   │ 89.2%   │ ✓       │
-│ Retry Rate       │ 8.5%    │ ✓       │
-│ Tool Success     │ 94.3%   │ ✓       │
-└──────────────────┴─────────┴─────────┘
-
-🏆 TOP PROMPTS
-1. "Create REST API endpoint for..." (Score: 94)
-2. "Fix TypeScript error in auth.ts:42" (Score: 91)
-
-⚠️ NEEDS IMPROVEMENT
-1. "fix it" (Score: 12) - Too vague
-2. "do the same thing again" (Score: 18) - Missing context
-```
+| Factor | Points |
+|--------|--------|
+| High tool success rate | +10 |
+| Required clarification follow-up | -15 |
+| Conversation loop detected | -20 |
 
 ## Data Sources
 
-### Claude Code
-- `~/.claude/projects/[path]/[sessionId].jsonl` - Session conversations
-- `~/.claude/stats-cache.json` - Aggregated statistics
+The tool reads local data from your AI assistants:
 
-### Cursor
-- `~/.cursor/projects/[project]/agent-transcripts/*.txt` - Agent conversations
-- `~/.cursor/ai-tracking/ai-code-tracking.db` - SQLite database with code generation stats
+### Claude Code (`~/.claude/`)
+- `projects/[path]/[sessionId].jsonl` - Full conversation history
+- `stats-cache.json` - Aggregated usage statistics
 
-## Programmatic Usage
+### Cursor (`~/.cursor/`)
+- `projects/[project]/agent-transcripts/*.txt` - Agent conversations
+- `ai-tracking/ai-code-tracking.db` - SQLite database with code generation stats
+
+**Note:** All analysis happens locally. No data is sent anywhere.
+
+## Programmatic Usage (SDK)
 
 ```typescript
 import {
+  // Claude Code
   parseSessions,
   analyzeSessionPrompts,
   calculateAverageQuality,
+
+  // Cursor
   parseCursorTranscripts,
   analyzeCursorTranscriptPrompts,
+
+  // Classification
+  classifyPrompt,
+  calculatePromptStats,
 } from 'prompt-prof';
 
 // Analyze Claude Code sessions
@@ -171,20 +238,40 @@ for (const session of sessions) {
 const transcripts = parseCursorTranscripts(startDate, endDate);
 for (const transcript of transcripts) {
   const analyzed = analyzeCursorTranscriptPrompts(transcript);
-  // ...
+  // Process results...
 }
+
+// Classify a single prompt
+const type = classifyPrompt("Create a REST API endpoint for users");
+// Returns: 'code_generation'
 ```
 
 ## Tips for Better Prompts
 
-Based on the scoring system, here are ways to improve your prompts:
+Based on the scoring system:
 
 1. **Be specific** - Include file names, function names, line numbers
-2. **Use action verbs** - "Create", "Fix", "Update", "Refactor" instead of "do" or "change"
-3. **Provide context** - Include error messages, code snippets, or expected behavior
-4. **Avoid vague language** - "Fix it" or "Make it work" score poorly
-5. **Reference previous context** - "In the file we just edited" is clearer than "that file"
-6. **Don't repeat yourself** - Retries are detected and penalized
+   - Bad: "Fix the bug"
+   - Good: "Fix the TypeError in src/api/users.ts:42"
+
+2. **Use action verbs** - "Create", "Fix", "Update", "Refactor"
+   - Bad: "The login doesn't work"
+   - Good: "Fix the login validation that rejects valid emails"
+
+3. **Provide context** - Include error messages, expected behavior
+   - Bad: "It's broken"
+   - Good: "Getting 'Cannot read property of undefined' when clicking submit"
+
+4. **Avoid vague language** - Skip "fix it", "make it work", "do it"
+   - Bad: "Do the same thing for the other file"
+   - Good: "Apply the same validation logic to src/api/orders.ts"
+
+5. **Reduce clarifications** - Be specific upfront
+   - If you find yourself saying "No, I meant..." often, add more detail initially
+
+## Contributing
+
+Issues and PRs welcome at [github.com/sanketagarwal/prompt-prof](https://github.com/sanketagarwal/prompt-prof)
 
 ## License
 
