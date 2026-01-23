@@ -1,0 +1,65 @@
+{
+  "name": "prompt-prof",
+  "version": "1.0.0",
+  "description": "Analyze prompt effectiveness for AI coding assistants (Claude Code & Cursor). Track quality scores, costs, patterns, and get actionable insights to improve your prompting.",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "bin": {
+    "prompt-prof": "./dist/bin/prompt-prof.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "start": "node dist/bin/prompt-prof.js",
+    "dev": "tsc && node dist/bin/prompt-prof.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "cursor",
+    "ai",
+    "prompt",
+    "prompt-engineering",
+    "analyzer",
+    "cli",
+    "productivity",
+    "llm",
+    "anthropic",
+    "coding-assistant"
+  ],
+  "author": "Sanket Agarwal",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanketagarwal/prompt-prof"
+  },
+  "bugs": {
+    "url": "https://github.com/sanketagarwal/prompt-prof/issues"
+  },
+  "homepage": "https://github.com/sanketagarwal/prompt-prof#readme",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "chalk": "^5.6.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.2",
+    "dayjs": "^1.11.19",
+    "natural": "^8.1.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/natural": "^5.1.5",
+    "@types/node": "^25.0.10",
+    "typescript": "^5.9.3"
+  }
+}
