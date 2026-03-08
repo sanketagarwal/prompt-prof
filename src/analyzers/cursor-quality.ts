@@ -1,7 +1,7 @@
 import { CursorTranscript, CursorMessage } from '../types/cursor-data';
 import { PromptQualityScore } from '../types/claude-data';
 import { calculateClarityScore } from '../scoring/clarity';
-import { RETRY_SIMILARITY_THRESHOLD, RETRY_LOOKBACK_COUNT } from '../core/constants';
+import { RETRY_SIMILARITY_THRESHOLD, RETRY_LOOKBACK_COUNT, DIRECT_COMMAND_PATTERNS } from '../core/constants';
 import natural from 'natural';
 
 const { JaroWinklerDistance } = natural;
@@ -65,8 +65,14 @@ function calculateCursorContextScore(
   }
 
   // Check for good first message context
-  if (isFirstMessage && prompt.length > 50 && !issues.length) {
-    score += 5;
+  const isDirectCmd = DIRECT_COMMAND_PATTERNS.some(p => p.test(prompt.trim()));
+  if (isFirstMessage && !issues.length) {
+    if (prompt.length > 50) {
+      score += 5;
+    } else if (isDirectCmd) {
+      // Direct commands are self-contained and don't need conversational context
+      score += 10;
+    }
   }
 
   return { score: Math.max(0, Math.min(100, score)), issues };

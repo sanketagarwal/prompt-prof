@@ -3,6 +3,7 @@ import {
   ACTION_VERBS,
   FILE_REFERENCE_PATTERNS,
   CODE_REFERENCE_PATTERNS,
+  DIRECT_COMMAND_PATTERNS,
 } from '../core/constants';
 
 export interface ClarityResult {
@@ -13,6 +14,7 @@ export interface ClarityResult {
     codeReferences: number;
     vagueCommands: number;
     shortPrompt: number;
+    directCommand: number;
   };
   issues: string[];
   suggestions: string[];
@@ -31,7 +33,8 @@ function hasFileReferences(prompt: string): boolean {
 function hasActionVerbs(prompt: string): boolean {
   const lowerPrompt = prompt.toLowerCase();
   return ACTION_VERBS.some(verb => {
-    const regex = new RegExp(`\\b${verb}\\b`, 'i');
+    // Match verb and common inflections (e.g. "test" matches "tests", "testing", "tested")
+    const regex = new RegExp(`\\b${verb}(s|ing|ed|es)?\\b`, 'i');
     return regex.test(lowerPrompt);
   });
 }
@@ -52,11 +55,24 @@ function isVagueCommand(prompt: string): boolean {
 }
 
 /**
+ * Check if prompt is a direct CLI/tool command (inherently clear, no elaboration needed)
+ */
+function isDirectCommand(prompt: string): boolean {
+  const trimmed = prompt.trim();
+  return DIRECT_COMMAND_PATTERNS.some(pattern => pattern.test(trimmed));
+}
+
+/**
  * Check if prompt is too short without context
+ * Direct commands are exempt - "run tests" and "git status" are perfectly clear
  */
 function isShortWithoutContext(prompt: string): boolean {
   const words = prompt.trim().split(/\s+/);
-  return words.length < 5 && !hasFileReferences(prompt) && !hasCodeReferences(prompt);
+  if (words.length >= 5) return false;
+  if (hasFileReferences(prompt)) return false;
+  if (hasCodeReferences(prompt)) return false;
+  if (isDirectCommand(prompt)) return false;
+  return true;
 }
 
 /**
@@ -70,22 +86,30 @@ export function calculateClarityScore(prompt: string): ClarityResult {
     codeReferences: 0,
     vagueCommands: 0,
     shortPrompt: 0,
+    directCommand: 0,
   };
   const issues: string[] = [];
   const suggestions: string[] = [];
+
+  // Direct command bonus - CLI-style prompts are inherently clear
+  const directCmd = isDirectCommand(prompt);
+  if (directCmd) {
+    score += 15;
+    breakdown.directCommand = 15;
+  }
 
   // Positive factors
   if (hasFileReferences(prompt)) {
     score += 10;
     breakdown.fileReferences = 10;
-  } else {
+  } else if (!directCmd) {
     suggestions.push('Include specific file paths for better context');
   }
 
   if (hasActionVerbs(prompt)) {
     score += 8;
     breakdown.actionVerbs = 8;
-  } else {
+  } else if (!directCmd) {
     suggestions.push('Use clear action verbs (create, fix, update, etc.)');
   }
 

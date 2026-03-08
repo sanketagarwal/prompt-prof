@@ -120,6 +120,15 @@ export const ACTION_VERBS = [
   'migrate',
   'optimize',
   'improve',
+  'run',
+  'execute',
+  'start',
+  'stop',
+  'restart',
+  'lint',
+  'format',
+  'publish',
+  'compile',
 ];
 
 // File reference patterns
@@ -142,6 +151,22 @@ export const CODE_REFERENCE_PATTERNS = [
   /exception:/i,
   /```[\s\S]*```/,
   /`[^`]+`/,
+];
+
+// Direct CLI/tool command patterns - these are inherently clear and should not be penalized for brevity
+export const DIRECT_COMMAND_PATTERNS = [
+  // CLI tool prefixes (git, npm, docker, etc.)
+  /^(git|npm|npx|yarn|pnpm|bun|deno|docker|docker-compose|kubectl|terraform|make|cargo|pip|pipenv|poetry|brew|apt|go|rustc|mvn|gradle)\s+/i,
+  // Direct "run/execute" + specific target
+  /^(run|execute)\s+(the\s+)?(tests?|specs?|server|dev\s*server|app|build|linter|lint|formatter|format|migrations?|scripts?|benchmarks?|suite|ci|pipeline|e2e|unit\s*tests?|integration\s*tests?)/i,
+  // Standalone build/test/deploy commands (with optional target)
+  /^(build|compile|test|lint|format|deploy|publish|clean|bundle|typecheck|type-check|start|serve|watch)\b/i,
+  // Install/update dependencies
+  /^(install|uninstall|upgrade)\s+(the\s+)?(dependencies|packages?|deps|devDependencies|node.modules)/i,
+  // Git operations without prefix
+  /^(push|pull|commit|merge|rebase|checkout|stash|fetch|clone|tag)\s/i,
+  // System commands
+  /^(ls|cd|pwd|mkdir|rm|cp|mv|cat|echo|grep|find|chmod|chown|kill|ps|top|df|du)\s/i,
 ];
 
 // Clarification follow-up patterns

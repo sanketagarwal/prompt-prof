@@ -1,4 +1,5 @@
 import { ParsedMessage } from '../types/claude-data';
+import { DIRECT_COMMAND_PATTERNS } from '../core/constants';
 
 export interface ContextResult {
   score: number;
@@ -162,8 +163,14 @@ export function calculateContextScore(
   }
 
   // First message bonus for good context
-  if (isFirstMessage && prompt.length > 50 && !isColdStartUnclear(prompt, previousMessages, isFirstMessage)) {
-    score += 5;
+  const isDirectCmd = DIRECT_COMMAND_PATTERNS.some(p => p.test(prompt.trim()));
+  if (isFirstMessage && !isColdStartUnclear(prompt, previousMessages, isFirstMessage)) {
+    if (prompt.length > 50) {
+      score += 5;
+    } else if (isDirectCmd) {
+      // Direct commands are self-contained and don't need conversational context
+      score += 10;
+    }
   }
 
   // Clamp score to 0-100
